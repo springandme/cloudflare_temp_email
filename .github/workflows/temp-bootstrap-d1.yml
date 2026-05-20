@@ -1,0 +1,53 @@
+name: Temp Bootstrap D1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap-d1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@v5
+        name: Install pnpm
+        with:
+          version: 10
+          run_install: false
+
+      - name: Create and initialize D1
+        working-directory: worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          DB_NAME: cloudflare-temp-email
+        run: |
+          set -euo pipefail
+
+          pnpm install --no-frozen-lockfile
+
+          echo "Checking D1 database: ${DB_NAME}"
+          DB_LIST="$(pnpm wrangler d1 list --json)"
+          D1_ID="$(printf '%s' "$DB_LIST" | jq -r --arg name "$DB_NAME" '.[] | select(.name == $name) | .uuid' | head -n 1)"
+
+          if [ -z "$D1_ID" ]; then
+            echo "Creating D1 database: ${DB_NAME}"
+            pnpm wrangler d1 create "$DB_NAME"
+            DB_LIST="$(pnpm wrangler d1 list --json)"
+            D1_ID="$(printf '%s' "$DB_LIST" | jq -r --arg name "$DB_NAME" '.[] | select(.name == $name) | .uuid' | head -n 1)"
+          fi
+
+          if [ -z "$D1_ID" ]; then
+            echo "Failed to resolve D1 database id for ${DB_NAME}"
+            exit 1
+          fi
+
+          echo "D1_DATABASE_NAME=${DB_NAME}"
+          echo "D1_DATABASE_ID=${D1_ID}"
+          pnpm wrangler d1 execute "$DB_NAME" --file=../db/schema.sql --remote
