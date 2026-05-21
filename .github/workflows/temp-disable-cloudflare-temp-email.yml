@@ -1,0 +1,31 @@
+name: Temp Disable cloudflare-temp-email
+
+on:
+  workflow_dispatch:
+
+jobs:
+  disable:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete Cloudflare Worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WORKER_NAME: cloudflare-temp-email
+        run: |
+          set -euo pipefail
+
+          status_code="$(curl -sS -o /tmp/delete-worker-response.json -w "%{http_code}" \
+            -X DELETE \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json")"
+
+          cat /tmp/delete-worker-response.json
+
+          if [ "${status_code}" = "200" ] || [ "${status_code}" = "404" ]; then
+            exit 0
+          fi
+
+          echo "Unexpected Cloudflare API status: ${status_code}" >&2
+          exit 1
